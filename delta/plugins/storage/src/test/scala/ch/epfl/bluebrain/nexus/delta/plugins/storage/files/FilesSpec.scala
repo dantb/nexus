@@ -193,6 +193,30 @@ class FilesSpec(docker: RemoteStorageDocker)
         }
       }
 
+      "succeed and tag with randomly generated id" in {
+        withUUIDF(uuid2) {
+          val file = files
+            .create(None, projectRef, entity("fileTagged2.txt"), Some(tag))
+            .accepted
+
+          val attr         = attributes("fileTagged2.txt", id = uuid2)
+          val expectedData =
+            FileGen.resourceFor(
+              generatedId2,
+              projectRef,
+              diskRev,
+              attr,
+              createdBy = bob,
+              updatedBy = bob,
+              tags = Tags(tag -> 1)
+            )
+
+          val fileByTag = files.fetch(IdSegmentRef(generatedId2, tag), projectRef).accepted
+          file shouldEqual expectedData
+          fileByTag.value.tags.tags should contain(tag)
+        }
+      }
+
       "reject if no write permissions" in {
         files
           .create("file2", Some(remoteId), projectRef, entity(), None)
