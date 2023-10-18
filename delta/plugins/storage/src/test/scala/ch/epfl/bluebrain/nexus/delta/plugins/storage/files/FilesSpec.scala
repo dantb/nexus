@@ -177,6 +177,12 @@ class FilesSpec(docker: RemoteStorageDocker)
 
         actual shouldEqual expected
         fetched shouldEqual expected
+        val expected = mkResource(generatedId, projectRef, diskRev, attributes("myfile2.txt"))
+        val actual   = files.create(None, projectRef, entity("myfile2.txt"), None).accepted
+        val fetched  = files.fetch(actual.id, projectRef).accepted
+
+        actual shouldEqual expected
+        fetched shouldEqual expected
       }
 
       "succeed and tag with randomly generated id" in {
@@ -195,7 +201,9 @@ class FilesSpec(docker: RemoteStorageDocker)
 
       "succeed and tag with randomly generated id" in {
         withUUIDF(uuid2) {
-          val file = files
+          val attr      = attributes("fileTagged2.txt", id = uuid2)
+          val expected  = mkResource(generatedId2, projectRef, diskRev, attr, tags = Tags(tag -> 1))
+          val file      = files
             .create(None, projectRef, entity("fileTagged2.txt"), Some(tag))
             .accepted
 
@@ -212,7 +220,8 @@ class FilesSpec(docker: RemoteStorageDocker)
             )
 
           val fileByTag = files.fetch(IdSegmentRef(generatedId2, tag), projectRef).accepted
-          file shouldEqual expectedData
+
+          file shouldEqual expected
           fileByTag.value.tags.tags should contain(tag)
         }
       }
