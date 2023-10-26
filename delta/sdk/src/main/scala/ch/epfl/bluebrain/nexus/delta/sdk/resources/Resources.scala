@@ -192,7 +192,7 @@ trait Resources {
       id: IdSegmentRef,
       projectRef: ProjectRef,
       schemaOpt: Option[IdSegment]
-  ): IO[ResourceState]
+  )(implicit c: Subject): IO[ResourceState]
 
   /**
     * Fetches a resource.
@@ -209,7 +209,7 @@ trait Resources {
       id: IdSegmentRef,
       projectRef: ProjectRef,
       schemaOpt: Option[IdSegment]
-  ): IO[DataResource]
+  )(implicit c: Subject): IO[DataResource]
 
   /**
     * Fetch the [[DataResource]] from the provided ''projectRef'' and ''resourceRef''. Return on the error channel if
@@ -223,7 +223,7 @@ trait Resources {
   def fetch[R <: Throwable](
       resourceRef: ResourceRef,
       projectRef: ProjectRef
-  )(implicit rejectionMapper: Mapper[ResourceFetchRejection, R]): IO[DataResource] =
+  )(implicit rejectionMapper: Mapper[ResourceFetchRejection, R], c: Subject): IO[DataResource] =
     fetch(IdSegmentRef(resourceRef), projectRef, None).adaptError { case e: ResourceFetchRejection =>
       rejectionMapper.to(e)
     }

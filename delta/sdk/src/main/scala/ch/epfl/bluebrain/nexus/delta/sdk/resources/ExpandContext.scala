@@ -7,70 +7,86 @@ import ch.epfl.bluebrain.nexus.delta.rdf.IriOrBNode.Iri
 import ch.epfl.bluebrain.nexus.delta.sdk.model.{IdSegment, IdSegmentRef}
 import ch.epfl.bluebrain.nexus.delta.sdk.projects.FetchContext
 import ch.epfl.bluebrain.nexus.delta.sdk.projects.model.ProjectContext
-import ch.epfl.bluebrain.nexus.delta.sdk.resources.ExpandContext.{Context, ExpandedContext}
 import ch.epfl.bluebrain.nexus.delta.sourcing.model.Identity.Subject
 import ch.epfl.bluebrain.nexus.delta.sourcing.model.{ProjectRef, ResourceRef}
 
 trait ExpandContext {
-  def apply(context: Context, id: IdSegment, pr: ProjectRef, schemaRef: Option[IdSegment])(implicit
+  def apply(context: Context, id: IdSegment, pr: ProjectRef, schemaId: Option[IdSegment])(implicit
       c: Subject
-  ): IO[ExpandedContext]
+  ): IO[ResourceContext]
+
+  def apply(context: Context, id: IdSegment, pr: ProjectRef, schemaId: IdSegment)(implicit
+      c: Subject
+  ): IO[ResourceContextWithSchema]
+}
+
+final case class ResourceContext(
+    iri: Iri,
+    pc: ProjectContext,
+    schemaRef: Option[ResourceRef]
+)
+
+final case class ResourceContextWithSchema(
+    iri: Iri,
+    pc: ProjectContext,
+    schemaRef: ResourceRef
+)
+
+sealed trait Context
+
+object Context {
+  final case object Read extends Context
+
+  final case object Create extends Context
+
+  final case object Modify extends Context
 }
 
 object ExpandContext {
 
-  sealed trait Context
-  object Context {
-    final case object Read   extends Context
-    final case object Create extends Context
-    final case object Modify extends Context
-  }
-
   def mk[R <: Throwable](fetchContext: FetchContext[R], mkExpansionError: String => Throwable): ExpandContext =
     new ExpandContext {
 
-      override def apply(context: Context, id: IdSegment, pr: ProjectRef, schemaRef: Option[IdSegment])(implicit
+      override def apply(context: Context, id: IdSegment, pr: ProjectRef, schemaId: Option[IdSegment])(implicit
           c: Subject
-      ): IO[ExpandedContext] =
-        fetchCtx(context, pr).flatMap(pc => IO.fromEither(expandContext(mkExpansionError, id, pc, schemaRef)))
+      ): IO[ResourceContext] =
+        fetchCtx(context, pr).flatMap(pc => IO.fromEither(expand(id, pc, schemaId)))
+
+      override def apply(context: Context, id: IdSegment, pr: ProjectRef, schemaId: IdSegment)(implicit
+          c: Subject
+      ): IO[ResourceContextWithSchema] =
+        fetchCtx(context, pr).flatMap(pc => IO.fromEither(expandWithSchema(id, pc, schemaId)))
 
       private def fetchCtx(context: Context, pr: ProjectRef)(implicit c: Subject): IO[ProjectContext] = (context match {
-        case Context.Read   => fetchContext.onRead(pr)
+        case Context.Read => fetchContext.onRead(pr)
         case Context.Create => fetchContext.onCreate(pr)
         case Context.Modify => fetchContext.onModify(pr)
       }).toCatsIO
+
+      private def expand(id: IdSegment, pc: ProjectContext, schemaSeg: Option[IdSegment]) = for {
+        ref <- expandSchemaId(mkExpansionError, schemaSeg, pc)
+        iri <- expandIri(mkExpansionError, id, pc)
+      } yield ResourceContext(iri, pc, ref)
+
+      private def expandWithSchema(id: IdSegment, pc: ProjectContext, schemaSeg: IdSegment) = for {
+        ref <- expandSchemaId(mkExpansionError, schemaSeg, pc)
+        iri <- expandIri(mkExpansionError, id, pc)
+      } yield ResourceContextWithSchema(iri, pc, ref)
     }
 
-  final case class ExpandedContext(
-      iri: Iri,
-      pc: ProjectContext,
-      schemaRef: Option[ResourceRef]
-  )
-
-  def expandContext(
-      mkExpansionError: String => Throwable,
-      id: IdSegment,
-      pc: ProjectContext,
-      schemaSeg: Option[IdSegment]
-  ): Either[Throwable, ExpandedContext] =
-    for {
-      ref <- expandResourceRef(mkExpansionError, schemaSeg, pc)
-      iri <- expandIri(mkExpansionError, id, pc)
-    } yield ExpandedContext(iri, pc, ref)
-
-  def expandResourceRef(
+  def expandSchemaId(
       mkExpansionError: String => Throwable,
       segment: IdSegment,
       context: ProjectContext
   ): Either[Throwable, ResourceRef] =
     segment.toIri(context.apiMappings, context.base).map(ResourceRef(_)).toRight(mkExpansionError(segment.asString))
 
-  def expandResourceRef(
+  def expandSchemaId(
       mkExpansionError: String => Throwable,
       segmentOpt: Option[IdSegment],
       context: ProjectContext
   ): Either[Throwable, Option[ResourceRef]] = segmentOpt match {
-    case Some(value) => expandResourceRef(mkExpansionError, value, context).map(_.some)
+    case Some(value) => expandSchemaId(mkExpansionError, value, context).map(_.some)
     case None        => Right(None)
   }
 
@@ -79,14 +95,6 @@ object ExpandContext {
       segment: IdSegment,
       projectContext: ProjectContext
   ): Either[Throwable, Iri] =
-    expandIri(IdSegmentRef(segment), projectContext).map(_.iri).toRight(mkExpansionError(segment.asString))
+    ProjectContext.segmentToResourceRef(projectContext, IdSegmentRef(segment)).map(_.iri).toRight(mkExpansionError(segment.asString))
 
-  def expandIri(segment: IdSegmentRef, projectContext: ProjectContext): Option[ResourceRef] =
-    segment.value.toIri(projectContext.apiMappings, projectContext.base).map { iri =>
-      segment match {
-        case IdSegmentRef.Latest(_)        => ResourceRef.Latest(iri)
-        case IdSegmentRef.Revision(_, rev) => ResourceRef.Revision(iri, rev)
-        case IdSegmentRef.Tag(_, tag)      => ResourceRef.Tag(iri, tag)
-      }
-    }
 }

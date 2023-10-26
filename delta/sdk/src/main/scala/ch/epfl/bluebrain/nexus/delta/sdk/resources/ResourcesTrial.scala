@@ -12,8 +12,7 @@ import ch.epfl.bluebrain.nexus.delta.sdk.model.jsonld.RemoteContextRef
 import ch.epfl.bluebrain.nexus.delta.sdk.model.{IdSegment, IdSegmentRef, ResourceF, Tags}
 import ch.epfl.bluebrain.nexus.delta.sdk.projects.FetchContext
 import ch.epfl.bluebrain.nexus.delta.sdk.resolvers.ResolverContextResolution
-import ch.epfl.bluebrain.nexus.delta.sdk.resources.Resources.expandResourceRef
-import ch.epfl.bluebrain.nexus.delta.sdk.resources.model.ResourceRejection.ProjectContextRejection
+import ch.epfl.bluebrain.nexus.delta.sdk.resources.model.ResourceRejection.{InvalidResourceId, ProjectContextRejection}
 import ch.epfl.bluebrain.nexus.delta.sdk.resources.model.{ResourceGenerationResult, ResourceRejection, ResourceState}
 import ch.epfl.bluebrain.nexus.delta.sdk.schemas.model.Schema
 import ch.epfl.bluebrain.nexus.delta.sourcing.model.ProjectRef
@@ -85,7 +84,7 @@ object ResourcesTrial {
     ): IO[ResourceGenerationResult] = {
       for {
         projectContext <- fetchContext.onRead(project).toCatsIO
-        schemaRef      <- Resources.expandResourceRef(schema, projectContext)
+        schemaRef      <- IO.fromEither(ExpandContext.expandSchemaId(InvalidResourceId, schema, projectContext))
         jsonld         <- sourceParser(project, projectContext, source.value).toCatsIO
         validation     <- validateResource(jsonld.iri, jsonld.expanded, schemaRef, project, caller)
         result         <- toResourceF(project, jsonld, source, validation)
@@ -112,7 +111,7 @@ object ResourcesTrial {
     ): IO[ValidationResult] = {
       for {
         projectContext <- fetchContext.onRead(project).toCatsIO
-        schemaRefOpt   <- expandResourceRef(schemaOpt, projectContext)
+        schemaRefOpt   <- IO.fromEither(ExpandContext.expandSchemaId(InvalidResourceId, schemaOpt, projectContext))
         resource       <- fetchResource(id, project)
         report         <- validateResource(
                             resource.id,
