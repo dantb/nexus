@@ -1,6 +1,7 @@
 package ch.epfl.bluebrain.nexus.delta.plugins.blazegraph
 
 import cats.effect.IO
+import cats.syntax.all._
 import ch.epfl.bluebrain.nexus.delta.kernel.effect.migration._
 import ch.epfl.bluebrain.nexus.delta.kernel.search.Pagination.FromPagination
 import ch.epfl.bluebrain.nexus.delta.kernel.utils.ClasspathResourceUtils.ioContentOf
@@ -143,8 +144,8 @@ object BlazegraphViewsQuery {
           base: BaseUri
       ): IO[SearchResults[SparqlLink]] =
         for {
-          p        <- fetchContext.onRead(projectRef).toCatsIO
-          iri      <- expandIri(id, p).toCatsIO
+          p        <- fetchContext.onRead(projectRef)
+          iri      <- expandIri(id, p)
           q         = SparqlQuery(replace(incomingQuery, iri, pagination))
           bindings <- query(IriSegment(defaultViewId), projectRef, q, SparqlResultsJson)
           links     = toSparqlLinks(bindings.value)
@@ -157,8 +158,8 @@ object BlazegraphViewsQuery {
           includeExternalLinks: Boolean
       )(implicit caller: Caller, base: BaseUri): IO[SearchResults[SparqlLink]] =
         for {
-          p            <- fetchContext.onRead(projectRef).toCatsIO
-          iri          <- expandIri(id, p).toCatsIO
+          p            <- fetchContext.onRead(projectRef)
+          iri          <- expandIri(id, p)
           queryTemplate = if (includeExternalLinks) outgoingWithExternalQuery else outgoingScopedQuery
           q             = SparqlQuery(replace(queryTemplate, iri, pagination))
           bindings     <- query(IriSegment(defaultViewId), projectRef, q, SparqlResultsJson)
@@ -182,7 +183,6 @@ object BlazegraphViewsQuery {
                              AuthorizationFailed(i.ref.project, i.permission)
                            )
                            .as(Set(i.index))
-                           .toBIO[BlazegraphViewRejection]
                        case a: AggregateView =>
                          aclCheck
                            .mapFilter[IndexingView, String](
@@ -190,11 +190,12 @@ object BlazegraphViewsQuery {
                              v => ProjectAcl(v.ref.project) -> v.permission,
                              _.index
                            )
-                           .toUIO
                      }
           qr      <- logSlowQueries(
                        BlazegraphQueryContext(ViewRef.apply(project, iri), query, caller.subject),
-                       client.query(indices, query, responseType).mapError(WrappedBlazegraphClientError)
+                       client.query(indices, query, responseType).adaptError { case e: SparqlClientError =>
+                         WrappedBlazegraphClientError(e)
+                       }
                      )
         } yield qr
 

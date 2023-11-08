@@ -60,7 +60,8 @@ object Optics extends Optics {
   val `@type` = root.`@type`.string
   val _uuid   = root._uuid.string
 
-  val _total = root._total.long
+  val _total    = root._total.long
+  val _filename = root._filename.string
 
   val hits       = root.hits.hits
   val totalHits  = root.hits.total.value.int

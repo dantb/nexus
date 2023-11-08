@@ -3,7 +3,7 @@ package ch.epfl.bluebrain.nexus.delta.plugins.storage.files
 import akka.actor.typed.ActorSystem
 import akka.actor.{ActorSystem => ClassicActorSystem}
 import akka.http.scaladsl.model.ContentTypes.`application/octet-stream`
-import akka.http.scaladsl.model.{ContentType, HttpEntity, Uri}
+import akka.http.scaladsl.model._
 import cats.effect.{Clock, ContextShift, IO, Timer}
 import cats.syntax.all._
 import ch.epfl.bluebrain.nexus.delta.kernel.cache.LocalCache
@@ -20,7 +20,7 @@ import ch.epfl.bluebrain.nexus.delta.plugins.storage.files.model.FileRejection._
 import ch.epfl.bluebrain.nexus.delta.plugins.storage.files.model._
 import ch.epfl.bluebrain.nexus.delta.plugins.storage.files.schemas.{files => fileSchema}
 import ch.epfl.bluebrain.nexus.delta.plugins.storage.storages.StoragesConfig.{RemoteDiskStorageConfig, StorageTypeConfig}
-import ch.epfl.bluebrain.nexus.delta.plugins.storage.storages.model.StorageRejection.{StorageFetchRejection, StorageIsDeprecated}
+import ch.epfl.bluebrain.nexus.delta.plugins.storage.storages.model.StorageRejection.{DifferentStorageType, InvalidStorageType, StorageFetchRejection, StorageIsDeprecated}
 import ch.epfl.bluebrain.nexus.delta.plugins.storage.storages.model.{DigestAlgorithm, Storage, StorageRejection, StorageType}
 import ch.epfl.bluebrain.nexus.delta.plugins.storage.storages.operations.StorageFileRejection.{FetchAttributeRejection, FetchFileRejection, SaveFileRejection}
 import ch.epfl.bluebrain.nexus.delta.plugins.storage.storages.operations._
@@ -96,7 +96,7 @@ final class Files(
       tag: Option[UserTag]
   )(implicit caller: Caller): IO[FileResource] = {
     for {
-      pc                    <- fetchContext.onCreate(projectRef).toCatsIO
+      pc                    <- fetchContext.onCreate(projectRef)
       iri                   <- generateId(pc)
       _                     <- test(CreateFile(iri, projectRef, testStorageRef, testStorageType, testAttributes, caller.subject, tag))
       (storageRef, storage) <- fetchActiveStorage(storageId, projectRef, pc)
@@ -159,7 +159,7 @@ final class Files(
       tag: Option[UserTag]
   )(implicit caller: Caller): IO[FileResource] = {
     for {
-      pc  <- fetchContext.onCreate(projectRef).toCatsIO
+      pc  <- fetchContext.onCreate(projectRef)
       iri <- generateId(pc)
       res <- createLink(iri, projectRef, pc, storageId, filename, mediaType, path, tag)
     } yield res
@@ -196,6 +196,59 @@ final class Files(
       res       <- createLink(iri, id.project, pc, storageId, filename, mediaType, path, tag)
     } yield res
   }.span("createLink")
+
+  // TODO comments
+  def copyTo(
+      sourceId: FileId,
+      dest: CopyFileDestination
+  )(implicit c: Caller): IO[FileResource] = {
+    for {
+      _                                <- logger.info(s"Fetching source file")
+      (file, sourceDesc, sourceEntity) <- fetchSourceFile(sourceId)
+      _                                <- logger.info(s"Fetched source file, fetching destination storage")
+      (pc, storageRef, storage)        <- fetchDestinationStorage(dest)
+      _                                <- logger.info(s"Fetched destination storage, validating storage type")
+      _                                <- validateStorageTypeForCopy(file.storageType, storage)
+      iri                              <- dest.fileId.fold(generateId(pc))(_.expandIri(fetchContext.onCreate).map(_._1))
+      _                                <- logger.info(s"Validated storage type, saving file")
+      destinationDesc                  <- FileDescription(dest.filename.getOrElse(sourceDesc.filename), sourceDesc.mediaType)
+      attributes                       <- saveFile(iri, storage, destinationDesc, sourceEntity)
+      _                                <- logger.info(s"Saved file, evaluating creation command destination storage")
+      res                              <- eval(CreateFile(iri, dest.project, storageRef, storage.tpe, attributes, c.subject, dest.tag))
+    } yield res
+  }.span("copyFile")
+
+  private def fetchSourceFile(id: FileId)(implicit c: Caller) =
+    for {
+      file                        <- fetch(id)
+      (iri, _)                    <- id.expandIri(fetchContext.onRead)
+      sourceStorage               <- storages.fetch(file.value.storage, id.project)
+      _                           <- validateAuth(id.project, sourceStorage.value.storageValue.readPermission)
+      attributes                   = file.value.attributes
+      sourceBytes                 <- fetchFile(sourceStorage.value, attributes, file.id)
+      bodyPartEntity               =
+        HttpEntity(attributes.mediaType.getOrElse(ContentTypes.NoContentType), attributes.bytes, sourceBytes)
+      // TODO should this be strict?
+      multipartEntity              =
+        Multipart.FormData(Multipart.FormData.BodyPart("file", bodyPartEntity, Map("filename" -> attributes.filename)))
+      (description, sourceEntity) <- extractFormData(iri, sourceStorage.value, multipartEntity.toEntity())
+    } yield (file.value, description, sourceEntity)
+
+  private def fetchDestinationStorage(dest: CopyFileDestination)(implicit c: Caller) =
+    for {
+      pc                            <- fetchContext.onCreate(dest.project)
+      (destStorageRef, destStorage) <- fetchActiveStorage(dest.storage, dest.project, pc)
+    } yield (pc, destStorageRef, destStorage)
+
+  private def validateStorageTypeForCopy(source: StorageType, destination: Storage): IO[Unit] =
+    IO.raiseWhen(source == StorageType.S3Storage)(
+      WrappedStorageRejection(
+        InvalidStorageType(destination.id, source, Set(StorageType.DiskStorage, StorageType.RemoteDiskStorage))
+      )
+    ) >>
+      IO.raiseUnless(source == destination.tpe)(
+        WrappedStorageRejection(DifferentStorageType(destination.id, found = destination.tpe, expected = source))
+      )
 
   /**
     * Update an existing file
@@ -458,22 +511,35 @@ final class Files(
 
   private def extractFileAttributes(iri: Iri, entity: HttpEntity, storage: Storage): IO[FileAttributes] =
     for {
-      storageAvailableSpace <- storage.storageValue.capacity.fold(IO.none[Long]) { capacity =>
-                                 storagesStatistics
-                                   .get(storage.id, storage.project)
-                                   .redeem(
-                                     _ => Some(capacity),
-                                     stat => Some(capacity - stat.spaceUsed)
-                                   )
-                               }
-      (description, source) <- formDataExtractor(iri, entity, storage.storageValue.maxFileSize, storageAvailableSpace)
-      attributes            <- SaveFile(storage, remoteDiskStorageClient, config)
-                                 .apply(description, source)
-                                 .adaptError { case e: SaveFileRejection => SaveRejection(iri, storage.id, e) }
+      (description, source) <- extractFormData(iri, storage, entity)
+      attributes            <- saveFile(iri, storage, description, source)
     } yield attributes
 
+  private def extractFormData(iri: Iri, storage: Storage, entity: HttpEntity): IO[(FileDescription, BodyPartEntity)] =
+    for {
+      storageAvailableSpace <- fetchStorageAvailableSpace(storage)
+      (description, source) <- formDataExtractor(iri, entity, storage.storageValue.maxFileSize, storageAvailableSpace)
+    } yield (description, source)
+
+  private def saveFile(iri: Iri, storage: Storage, description: FileDescription, source: BodyPartEntity) =
+    SaveFile(storage, remoteDiskStorageClient, config)
+      .apply(description, source)
+      .adaptError { case e: SaveFileRejection => SaveRejection(iri, storage.id, e) }
+
+  private def fetchStorageAvailableSpace(storage: Storage): IO[Option[Long]]                             =
+    storage.storageValue.capacity.fold(IO.none[Long]) { capacity =>
+      storagesStatistics
+        .get(storage.id, storage.project)
+        .redeem(
+          _ => Some(capacity),
+          stat => Some(capacity - stat.spaceUsed)
+        )
+    }
+
   private def expandStorageIri(segment: IdSegment, pc: ProjectContext): IO[Iri] =
-    Storages.expandIri(segment, pc).mapError(WrappedStorageRejection).toCatsIO
+    Storages.expandIri(segment, pc).adaptError { case s: StorageRejection =>
+      WrappedStorageRejection(s)
+    }
 
   private def generateId(pc: ProjectContext)(implicit uuidF: UUIDF): IO[Iri] =
     uuidF().toCatsIO.map(uuid => pc.base.iri / uuid.toString)

@@ -10,6 +10,7 @@ import akka.http.scaladsl.unmarshalling.{FromEntityUnmarshaller, MultipartUnmars
 import akka.stream.scaladsl.{Keep, Sink}
 import cats.effect.{ContextShift, IO}
 import cats.syntax.all._
+import ch.epfl.bluebrain.nexus.delta.kernel.Logger
 import ch.epfl.bluebrain.nexus.delta.kernel.http.MediaTypeDetectorConfig
 import ch.epfl.bluebrain.nexus.delta.kernel.utils.{FileUtils, UUIDF}
 import ch.epfl.bluebrain.nexus.delta.plugins.storage.files.model.FileDescription
@@ -43,6 +44,8 @@ sealed trait FormDataExtractor {
   ): IO[(FileDescription, BodyPartEntity)]
 }
 object FormDataExtractor {
+
+  private val log = Logger[FormDataExtractor]
 
   private val fieldName: String = "file"
 
@@ -91,6 +94,7 @@ object FormDataExtractor {
         case Unmarshaller.NoContentException    =>
           WrappedAkkaRejection(RequestEntityExpectedRejection)
         case x: UnsupportedContentTypeException =>
+          log.info(s"Supported media type is ${x.supported}").unsafeRunSync()
           WrappedAkkaRejection(UnsupportedRequestContentTypeRejection(x.supported, x.actualContentType))
         case x: IllegalArgumentException        =>
           WrappedAkkaRejection(ValidationRejection(Option(x.getMessage).getOrElse(""), Some(x)))
