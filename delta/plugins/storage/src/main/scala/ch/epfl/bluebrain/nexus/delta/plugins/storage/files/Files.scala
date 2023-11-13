@@ -197,23 +197,24 @@ final class Files(
     } yield res
   }.span("createLink")
 
-  // TODO comments
+  /**
+    * Create a file from a source file potentially in a different organization
+    * @param sourceId
+    *   File lookup id for the source file
+    * @param dest
+    *   Project, storage and file details for the file we're creating
+    */
   def copyTo(
       sourceId: FileId,
       dest: CopyFileDestination
   )(implicit c: Caller): IO[FileResource] = {
     for {
-      _                                <- logger.info(s"Fetching source file")
       (file, sourceDesc, sourceEntity) <- fetchSourceFile(sourceId)
-      _                                <- logger.info(s"Fetched source file, fetching destination storage")
       (pc, storageRef, storage)        <- fetchDestinationStorage(dest)
-      _                                <- logger.info(s"Fetched destination storage, validating storage type")
       _                                <- validateStorageTypeForCopy(file.storageType, storage)
-      iri                              <- dest.fileId.fold(generateId(pc))(_.expandIri(fetchContext.onCreate).map(_._1))
-      _                                <- logger.info(s"Validated storage type, saving file")
+      iri                              <- dest.fileId.fold(generateId(pc))(FileId(_, dest.project).expandIri(fetchContext.onCreate).map(_._1))
       destinationDesc                  <- FileDescription(dest.filename.getOrElse(sourceDesc.filename), sourceDesc.mediaType)
       attributes                       <- saveFile(iri, storage, destinationDesc, sourceEntity)
-      _                                <- logger.info(s"Saved file, evaluating creation command destination storage")
       res                              <- eval(CreateFile(iri, dest.project, storageRef, storage.tpe, attributes, c.subject, dest.tag))
     } yield res
   }.span("copyFile")

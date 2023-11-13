@@ -442,7 +442,7 @@ class FilesSpec(docker: RemoteStorageDocker)
 
       "succeed from disk storage based on a tag" in {
         val newFileId        = genString()
-        val destination      = CopyFileDestination(projectRefOrg2, Some(FileId(newFileId, projectRefOrg2)), None, None, None)
+        val destination      = CopyFileDestination(projectRefOrg2, Some(newFileId), None, None, None)
         val expectedFilename = "myfile.txt"
         val expectedAttr     = attributes(filename = expectedFilename, projRef = projectRefOrg2)
         val expected         = mkResource(nxv + newFileId, projectRefOrg2, diskRev, expectedAttr)
@@ -457,7 +457,7 @@ class FilesSpec(docker: RemoteStorageDocker)
       "succeed from disk storage based on a rev and should tag the new file" in {
         val (newFileId, newTag) = (genString(), UserTag.unsafe(genString()))
         val destination         =
-          CopyFileDestination(projectRefOrg2, Some(FileId(newFileId, projectRefOrg2)), None, Some(newTag), None)
+          CopyFileDestination(projectRefOrg2, Some(newFileId), None, Some(newTag), None)
         val expectedFilename    = "file.txt"
         val expectedAttr        = attributes(filename = expectedFilename, projRef = projectRefOrg2)
         val expected            = mkResource(nxv + newFileId, projectRefOrg2, diskRev, expectedAttr, tags = Tags(newTag -> 1))

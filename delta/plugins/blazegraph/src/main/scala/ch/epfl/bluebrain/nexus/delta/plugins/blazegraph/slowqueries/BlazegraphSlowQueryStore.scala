@@ -38,7 +38,7 @@ object BlazegraphSlowQueryStore {
            """.stripMargin
           .query[BlazegraphSlowQuery]
           .stream
-          .transact(xas.write)
+          .transact(xas.read)
           .compile
           .toList
       }

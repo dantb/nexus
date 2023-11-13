@@ -123,7 +123,7 @@ final class FilesRoutes(
                             parameters("storage".as[IdSegment].?, "tag".as[UserTag].?) { case (destStorage, destTag) =>
                               entity(as[CopyFilePayload]) { c: CopyFilePayload =>
                                 val copyTo =
-                                  CopyFileDestination(projectRef, Some(fileId), destStorage, destTag, c.destFilename)
+                                  CopyFileDestination(projectRef, Some(id), destStorage, destTag, c.destFilename)
 
                                 emit(Created, copyFile(projectRef, mode, c, copyTo))
                               }
