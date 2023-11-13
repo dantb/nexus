@@ -3,7 +3,6 @@ package ch.epfl.bluebrain.nexus.delta.plugins.search
 import akka.actor.ActorSystem
 import akka.testkit.TestKit
 import cats.effect.IO
-import ch.epfl.bluebrain.nexus.delta.kernel.effect.migration._
 import ch.epfl.bluebrain.nexus.delta.plugins.blazegraph.Fixtures.defaultProperties
 import ch.epfl.bluebrain.nexus.delta.plugins.blazegraph.client.BlazegraphClient
 import ch.epfl.bluebrain.nexus.delta.plugins.blazegraph.client.SparqlQueryResponseType.SparqlNTriples
@@ -21,7 +20,6 @@ import ch.epfl.bluebrain.nexus.testkit.blazegraph.BlazegraphDocker
 import ch.epfl.bluebrain.nexus.testkit.scalatest.EitherValues
 import ch.epfl.bluebrain.nexus.testkit.scalatest.ce.{CatsEffectSpec, CatsIOValues}
 import io.circe.Json
-import monix.execution.Scheduler
 import org.scalatest.CancelAfterFailure
 import org.scalatest.concurrent.Eventually
 
@@ -42,7 +40,6 @@ class SearchSparqlQuerySpec
 
   private val searchDocument = contexts + "search-document.json"
 
-  implicit private val sc: Scheduler                = Scheduler.global
   implicit private val httpCfg: HttpClientConfig    = httpClientConfig
   implicit private val api: JsonLdApi               = JsonLdJavaApi.strict
   implicit private val rcr: RemoteContextResolution = RemoteContextResolution.fixed(

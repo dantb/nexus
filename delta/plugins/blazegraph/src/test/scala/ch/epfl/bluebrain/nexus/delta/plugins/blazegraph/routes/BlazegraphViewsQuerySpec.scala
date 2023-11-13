@@ -7,7 +7,6 @@ import cats.data.NonEmptySet
 import cats.effect.IO
 import cats.syntax.all._
 import ch.epfl.bluebrain.nexus.delta.kernel.RetryStrategyConfig.AlwaysGiveUp
-import ch.epfl.bluebrain.nexus.delta.kernel.effect.migration._
 import ch.epfl.bluebrain.nexus.delta.kernel.search.Pagination
 import ch.epfl.bluebrain.nexus.delta.kernel.utils.UUIDF
 import ch.epfl.bluebrain.nexus.delta.plugins.blazegraph.BlazegraphViewsQuery.BlazegraphQueryContext
@@ -43,7 +42,6 @@ import ch.epfl.bluebrain.nexus.delta.sourcing.model.{Identity, Label, ResourceRe
 import ch.epfl.bluebrain.nexus.delta.sourcing.postgres.DoobieScalaTestFixture
 import ch.epfl.bluebrain.nexus.testkit.blazegraph.BlazegraphDocker
 import ch.epfl.bluebrain.nexus.testkit.scalatest.ce.CatsEffectSpec
-import monix.execution.Scheduler
 import org.scalatest.concurrent.Eventually
 import org.scalatest.{CancelAfterFailure, DoNotDiscover, Inspectors}
 
@@ -66,7 +64,6 @@ class BlazegraphViewsQuerySpec(docker: BlazegraphDocker)
     override def apply[A](context: BlazegraphQueryContext, query: IO[A]): IO[A] = query
   }
 
-  implicit private val sc: Scheduler                = Scheduler.global
   implicit private val httpConfig: HttpClientConfig = HttpClientConfig(AlwaysGiveUp, HttpClientWorthRetry.never, false)
   implicit private val baseUri: BaseUri             = BaseUri("http://localhost", Label.unsafe("v1"))
 
@@ -223,8 +220,7 @@ class BlazegraphViewsQuerySpec(docker: BlazegraphDocker)
       val proj = view1Proj1.project
       viewsQuery
         .query(view1Proj1.viewId, proj, constructQuery, SparqlNTriples)(anon)
-        .toBIO[BlazegraphViewRejection]
-        .terminated[AuthorizationFailed]
+        .rejectedWith[AuthorizationFailed]
     }
 
     "query a deprecated indexed view" in eventually {

@@ -25,7 +25,6 @@ import ch.epfl.bluebrain.nexus.delta.sdk.syntax._
 import ch.epfl.bluebrain.nexus.testkit.blazegraph.BlazegraphDocker
 import ch.epfl.bluebrain.nexus.testkit.scalatest.ce.CatsEffectSpec
 import io.circe.Json
-import monix.execution.Scheduler
 import org.scalatest.concurrent.Eventually
 import org.scalatest.{CancelAfterFailure, DoNotDiscover}
 
@@ -40,7 +39,6 @@ class BlazegraphClientSpec(docker: BlazegraphDocker)
     with CancelAfterFailure
     with Eventually {
 
-  implicit private val sc: Scheduler                = Scheduler.global
   implicit private val httpCfg: HttpClientConfig    = httpClientConfig
   implicit private val api: JsonLdApi               = JsonLdJavaApi.strict
   implicit private val rcr: RemoteContextResolution = RemoteContextResolution.never

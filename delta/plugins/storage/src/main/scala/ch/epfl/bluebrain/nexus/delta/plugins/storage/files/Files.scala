@@ -7,7 +7,6 @@ import akka.http.scaladsl.model._
 import cats.effect.{Clock, ContextShift, IO, Timer}
 import cats.syntax.all._
 import ch.epfl.bluebrain.nexus.delta.kernel.cache.LocalCache
-import ch.epfl.bluebrain.nexus.delta.kernel.effect.migration.{toCatsIOOps, toMonixBIOOps}
 import ch.epfl.bluebrain.nexus.delta.kernel.kamon.KamonMetricComponent
 import ch.epfl.bluebrain.nexus.delta.kernel.utils.{IOInstant, UUIDF}
 import ch.epfl.bluebrain.nexus.delta.kernel.{Logger, RetryStrategy}
@@ -66,6 +65,7 @@ final class Files(
 )(implicit
     uuidF: UUIDF,
     system: ClassicActorSystem,
+    timer: Timer[IO],
     contextShift: ContextShift[IO]
 ) {
 
@@ -542,7 +542,7 @@ final class Files(
     }
 
   private def generateId(pc: ProjectContext)(implicit uuidF: UUIDF): IO[Iri] =
-    uuidF().toCatsIO.map(uuid => pc.base.iri / uuid.toString)
+    uuidF().map(uuid => pc.base.iri / uuid.toString)
 
   /**
     * Starts a stream that attempts to update file attributes asynchronously for linked files in remote storages
@@ -561,7 +561,7 @@ final class Files(
                              case DigestNotComputed(_)                                                => true
                              case _                                                                   => false
                            },
-                           RetryStrategy.logError(logger, "file attributes update")(_, _).toBIOThrowable
+                           RetryStrategy.logError(logger, "file attributes update")(_, _)
                          )
                        }
       // We cache storage information
@@ -796,7 +796,7 @@ object Files {
   ): ScopedEntityDefinition[Iri, FileState, FileCommand, FileEvent, FileRejection] =
     ScopedEntityDefinition(
       entityType,
-      StateMachine(None, evaluate(_, _).toBIO[FileRejection], next),
+      StateMachine(None, evaluate(_, _), next),
       FileEvent.serializer,
       FileState.serializer,
       Tagger[FileEvent](

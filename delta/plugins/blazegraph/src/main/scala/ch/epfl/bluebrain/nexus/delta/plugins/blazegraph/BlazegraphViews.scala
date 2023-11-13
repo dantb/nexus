@@ -1,8 +1,7 @@
 package ch.epfl.bluebrain.nexus.delta.plugins.blazegraph
 
-import cats.effect.{Clock, IO, Timer}
+import cats.effect.{Clock, ContextShift, IO, Timer}
 import cats.syntax.all._
-import ch.epfl.bluebrain.nexus.delta.kernel.effect.migration._
 import ch.epfl.bluebrain.nexus.delta.kernel.kamon.KamonMetricComponent
 import ch.epfl.bluebrain.nexus.delta.kernel.utils.{IOInstant, UUIDF}
 import ch.epfl.bluebrain.nexus.delta.plugins.blazegraph.BlazegraphViews._
@@ -64,7 +63,7 @@ final class BlazegraphViews(
   def create(project: ProjectRef, source: Json)(implicit caller: Caller): IO[ViewResource] = {
     for {
       pc               <- fetchContext.onCreate(project)
-      (iri, viewValue) <- sourceDecoder(project, pc, source).toCatsIO
+      (iri, viewValue) <- sourceDecoder(project, pc, source)
       res              <- eval(CreateBlazegraphView(iri, project, viewValue, source, caller.subject))
       _                <- createNamespace(res)
     } yield res
@@ -88,7 +87,7 @@ final class BlazegraphViews(
     for {
       pc        <- fetchContext.onCreate(project)
       iri       <- expandIri(id, pc)
-      viewValue <- sourceDecoder(project, pc, iri, source).toCatsIO
+      viewValue <- sourceDecoder(project, pc, iri, source)
       res       <- eval(CreateBlazegraphView(iri, project, viewValue, source, caller.subject))
       _         <- createNamespace(res)
     } yield res
@@ -135,7 +134,7 @@ final class BlazegraphViews(
     for {
       pc        <- fetchContext.onModify(project)
       iri       <- expandIri(id, pc)
-      viewValue <- sourceDecoder(project, pc, iri, source).toCatsIO
+      viewValue <- sourceDecoder(project, pc, iri, source)
       res       <- eval(UpdateBlazegraphView(iri, project, viewValue, rev, source, caller.subject))
       _         <- createNamespace(res)
     } yield res
@@ -492,7 +491,7 @@ object BlazegraphViews {
       entityType,
       StateMachine(
         None,
-        evaluate(validate)(_, _).toBIO[BlazegraphViewRejection],
+        evaluate(validate)(_, _),
         next
       ),
       BlazegraphViewEvent.serializer,
@@ -534,6 +533,7 @@ object BlazegraphViews {
   )(implicit
       api: JsonLdApi,
       clock: Clock[IO],
+      contextShift: ContextShift[IO],
       timer: Timer[IO],
       uuidF: UUIDF
   ): IO[BlazegraphViews] = {
@@ -560,6 +560,7 @@ object BlazegraphViews {
   )(implicit
       api: JsonLdApi,
       clock: Clock[IO],
+      contextShift: ContextShift[IO],
       timer: Timer[IO],
       uuidF: UUIDF
   ): IO[BlazegraphViews] = {

@@ -1,6 +1,6 @@
 package ch.epfl.bluebrain.nexus.delta.sdk.acls
 
-import cats.effect.{Clock, IO, Timer}
+import cats.effect.{Clock, ContextShift, IO, Timer}
 import cats.syntax.all._
 import ch.epfl.bluebrain.nexus.delta.kernel.kamon.KamonMetricComponent
 import ch.epfl.bluebrain.nexus.delta.sdk._
@@ -95,7 +95,7 @@ object AclsImpl {
 
   def findUnknownRealms(xas: Transactors)(labels: Set[Label]): IO[Unit] = {
     GlobalStateStore
-      .listIds(Realms.entityType, xas.readCE)
+      .listIds(Realms.entityType, xas.read)
       .compile
       .toList
       .flatMap { existing =>
@@ -115,7 +115,7 @@ object AclsImpl {
       minimum: Set[Permission],
       config: AclsConfig,
       xas: Transactors
-  )(implicit clock: Clock[IO], timer: Timer[IO]): Acls =
+  )(implicit clock: Clock[IO], contextShift: ContextShift[IO], timer: Timer[IO]): Acls =
     new AclsImpl(
       GlobalEventLog(Acls.definition(fetchPermissionSet, findUnknownRealms), config.eventLog, xas),
       minimum
