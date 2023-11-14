@@ -365,7 +365,7 @@ class FilesRoutesSpec
     "copy a file" in {
       givenAFileInProject(projectRef.toString) { oldFileId =>
         val newFileId = genString()
-        val json      = Json.obj("source" := Json.obj("projectRef" := projectRef, "fileId" := oldFileId))
+        val json      = Json.obj("sourceProjectRef" := projectRef, "sourceFileId" := oldFileId)
 
         Put(s"/v1/files/${projectRefOrg2.toString}/$newFileId", json.toEntity) ~> asWriter ~> routes ~> check {
           status shouldEqual StatusCodes.Created
@@ -380,7 +380,7 @@ class FilesRoutesSpec
       val fileCopyUUId = UUID.randomUUID()
       withUUIDF(fileCopyUUId) {
         givenAFileInProject(projectRef.toString) { oldFileId =>
-          val json = Json.obj("source" := Json.obj("projectRef" := projectRef, "fileId" := oldFileId))
+          val json = Json.obj("sourceProjectRef" := projectRef, "sourceFileId" := oldFileId)
 
           Post(s"/v1/files/${projectRefOrg2.toString}/", json.toEntity) ~> asWriter ~> routes ~> check {
             status shouldEqual StatusCodes.Created
@@ -394,8 +394,12 @@ class FilesRoutesSpec
 
     "reject file copy request if tag and rev are present simultaneously" in {
       givenAFileInProject(projectRef.toString) { oldFileId =>
-        val source = Json.obj("projectRef" := projectRef, "fileId" := oldFileId, "tag" := "mytag", "rev" := 3)
-        val json   = Json.obj("source" := source)
+        val json = Json.obj(
+          "sourceProjectRef" := projectRef,
+          "sourceFileId"     := oldFileId,
+          "sourceTag"        := "mytag",
+          "sourceRev"        := 3
+        )
 
         val requests = List(
           Put(s"/v1/files/${projectRefOrg2.toString}/${genString()}", json.toEntity),

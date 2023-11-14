@@ -25,13 +25,12 @@ final case class CopyFilePayload(
 object CopyFilePayload {
 
   implicit val dec: Decoder[CopyFilePayload] = Decoder.instance { cur =>
-    val source = cur.downField("source")
     for {
       destFilename <- cur.get[Option[String]]("destinationFilename")
-      sourceProj   <- source.get[ProjectRef]("projectRef")
-      sourceFileId <- source.get[String]("fileId").map(IdSegment(_))
-      sourceTag    <- source.get[Option[UserTag]]("tag")
-      sourceRev    <- source.get[Option[Int]]("rev")
+      sourceProj   <- cur.get[ProjectRef]("sourceProjectRef")
+      sourceFileId <- cur.get[String]("sourceFileId").map(IdSegment(_))
+      sourceTag    <- cur.get[Option[UserTag]]("sourceTag")
+      sourceRev    <- cur.get[Option[Int]]("sourceRev")
     } yield CopyFilePayload(destFilename, sourceProj, sourceFileId, sourceTag, sourceRev)
   }
 }

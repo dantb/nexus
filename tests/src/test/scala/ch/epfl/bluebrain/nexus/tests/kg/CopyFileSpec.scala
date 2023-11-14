@@ -30,8 +30,11 @@ trait CopyFileSpec { self: StorageSpec =>
         val destFileId   = "attachment2.json"
         val destFilename = genId()
 
-        val source  = Json.obj("projectRef" := self.projectRef, "fileId" := sourceFileId)
-        val payload = Json.obj("destinationFilename" := destFilename, "source" := source)
+        val payload = Json.obj(
+          "destinationFilename" := destFilename,
+          "sourceProjectRef"    := self.projectRef,
+          "sourceFileId"        := sourceFileId
+        )
         val uri     = s"/files/$destProjRef/$destFileId?storage=nxv:$storageId"
 
         for {
