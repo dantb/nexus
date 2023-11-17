@@ -203,13 +203,15 @@ class HttpClient private (baseUrl: Uri, httpExt: HttpExt)(implicit
     identity match {
       case Anonymous => None
       case _         =>
-        Some(
+        val token =
           Option(tokensMap.get(identity)).getOrElse(
             throw new IllegalArgumentException(
               "The provided user has not been properly initialized, please add it to Identity.allUsers."
             )
           )
-        )
+
+        println(s"The auth header for identity $identity is ${token.credentials.token()}")
+        Some(token)
     }
   }
 
@@ -221,18 +223,22 @@ class HttpClient private (baseUrl: Uri, httpExt: HttpExt)(implicit
       toEntity: B => HttpEntity.Strict,
       f: (A, HttpResponse) => R,
       extraHeaders: Seq[HttpHeader]
-  )(implicit um: FromEntityUnmarshaller[A]): IO[R] =
+  )(implicit um: FromEntityUnmarshaller[A]): IO[R] = {
+    val req = HttpRequest(
+      method = method,
+      uri = s"$baseUrl$url",
+      headers = extraHeaders ++ identityHeader(identity),
+      entity = body.fold(HttpEntity.Empty)(toEntity)
+    )
+//    println(s"DTBDTB req as curl: ${req.uri.toString()}")
+//    println(s"DTBDTB req body as curl: ${req.}")
     apply(
-      HttpRequest(
-        method = method,
-        uri = s"$baseUrl$url",
-        headers = extraHeaders ++ identityHeader(identity),
-        entity = body.fold(HttpEntity.Empty)(toEntity)
-      )
+      req
     ).flatMap { res =>
       fromFuture { um(res.entity) }
         .map { f(_, res) }
     }
+  }
 
   def stream[A, B](
       url: String,

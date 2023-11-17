@@ -357,6 +357,7 @@ class ElasticSearchClient(client: HttpClient, endpoint: Uri, maxIndexPathLength:
     * @param sort
     *   the sorting criteria
     */
+  // DTB called by DefaultViewsQuery, used by listings in ElasticSearchQueryRoutes
   def search(params: ResourcesSearchParams, indices: Set[String], qp: Query)(
       page: Pagination,
       sort: SortList
@@ -424,6 +425,7 @@ class ElasticSearchClient(client: HttpClient, endpoint: Uri, maxIndexPathLength:
     * @param sort
     *   the sorting criteria
     */
+  // DTB called by ElasticSearchViewsQuery, from view _search route
   def search(
       query: JsonObject,
       indices: Set[String],
@@ -459,6 +461,8 @@ class ElasticSearchClient(client: HttpClient, endpoint: Uri, maxIndexPathLength:
     else {
       val (indexPath, q) = indexPathAndQuery(indices, query)
       val searchEndpoint = (endpoint / indexPath / searchPath).withQuery(Uri.Query(defaultQuery ++ qp.toMap))
+      val actualQuery = q.build
+      logger.info(s"Elasticsearch query is ${actualQuery.asJson.printWith(Printer.spaces2SortKeys)}") >>
       client.fromJsonTo[T](Post(searchEndpoint, q.build).withHttpCredentials)
     }
 

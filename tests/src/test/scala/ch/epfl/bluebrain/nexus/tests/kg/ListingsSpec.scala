@@ -62,6 +62,7 @@ final class ListingsSpec extends BaseIntegrationSpec {
         _ <- deltaClient.put[Json](s"/resources/$ref11/test-schema/resource11_with_schema", resourcePayload, Bob)(
                expectCreated
              )
+        _ = println(s"Creating org and projs $ref11, $ref12, $ref13, $ref21")
         _ <- deltaClient.put[Json](s"/resources/$ref12/_/resource12", resourcePayload, Bob)(expectCreated)
         _ <- deltaClient.put[Json](s"/resources/$ref13/_/resource13", resourcePayload, Bob)(expectCreated)
         _ <- deltaClient.put[Json](s"/resources/$ref21/_/resource21", resourcePayload, Bob)(expectCreated)
