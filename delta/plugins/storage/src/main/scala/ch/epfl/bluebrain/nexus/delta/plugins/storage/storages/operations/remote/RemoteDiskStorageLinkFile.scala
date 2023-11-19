@@ -14,7 +14,7 @@ class RemoteDiskStorageLinkFile(storage: RemoteDiskStorage, client: RemoteDiskSt
 
   def apply(sourcePath: Uri.Path, description: FileDescription): IO[FileAttributes] = {
     val destinationPath = Uri.Path(intermediateFolders(storage.project, description.uuid, description.filename))
-    client.moveFile(storage.value.folder, sourcePath, destinationPath)(storage.value.endpoint).map {
+    client.copyFile(storage.value.folder, sourcePath, destinationPath, keepSource = false)(storage.value.endpoint).map {
       case RemoteDiskStorageFileAttributes(location, bytes, digest, _) =>
         FileAttributes(
           uuid = description.uuid,

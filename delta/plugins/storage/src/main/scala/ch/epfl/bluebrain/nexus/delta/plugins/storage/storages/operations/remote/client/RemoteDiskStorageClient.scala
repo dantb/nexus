@@ -6,7 +6,7 @@ import akka.http.scaladsl.model.BodyPartEntity
 import akka.http.scaladsl.model.Multipart.FormData
 import akka.http.scaladsl.model.Multipart.FormData.BodyPart
 import akka.http.scaladsl.model.StatusCodes._
-import akka.http.scaladsl.model.Uri.Path
+import akka.http.scaladsl.model.Uri.{Path, Query}
 import cats.effect.{ContextShift, IO, Timer}
 import cats.implicits.{catsSyntaxApplicativeError, catsSyntaxMonadError, toFunctorOps}
 import ch.epfl.bluebrain.nexus.delta.plugins.storage.storages.operations.StorageFileRejection.FetchFileRejection.UnexpectedFetchError
@@ -155,13 +155,15 @@ final class RemoteDiskStorageClient(client: HttpClient, getAuthToken: AuthTokenP
     * @param destRelativePath
     *   the destination relative path location inside the nexus folder
     */
-  def moveFile(
+  def copyFile(
       bucket: Label,
       sourceRelativePath: Path,
-      destRelativePath: Path
+      destRelativePath: Path,
+      keepSource: Boolean
   )(implicit baseUri: BaseUri): IO[RemoteDiskStorageFileAttributes] = {
     getAuthToken(credentials).flatMap { authToken =>
-      val endpoint = baseUri.endpoint / "buckets" / bucket.value / "files" / destRelativePath
+      val endpoint = (baseUri.endpoint / "buckets" / bucket.value / "files" / destRelativePath)
+        .withQuery(Query("keepSource" -> keepSource.toString))
       val payload  = Json.obj("source" -> sourceRelativePath.toString.asJson)
       client
         .fromJsonTo[RemoteDiskStorageFileAttributes](Put(endpoint, payload).withCredentials(authToken))
