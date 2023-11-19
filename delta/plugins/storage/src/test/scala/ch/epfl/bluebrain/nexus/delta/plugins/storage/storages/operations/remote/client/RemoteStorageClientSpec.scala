@@ -86,9 +86,7 @@ class RemoteStorageClientSpec(docker: RemoteStorageDocker)
     }
 
     "move a file" in {
-      client
-        .copyFile(bucket, Uri.Path("my/file-1.txt"), Uri.Path("other/file-1.txt"), keepSource = false)(baseUri)
-        .accepted shouldEqual
+      client.moveFile(bucket, Uri.Path("my/file-1.txt"), Uri.Path("other/file-1.txt"))(baseUri).accepted shouldEqual
         attributes.copy(
           location = s"file:///app/$BucketName/nexus/other/file-1.txt",
           digest = NotComputedDigest
@@ -97,7 +95,7 @@ class RemoteStorageClientSpec(docker: RemoteStorageDocker)
 
     "fail to move a file that does not exist" in {
       client
-        .copyFile(bucket, Uri.Path("my/file.txt"), Uri.Path("other/file.txt"), keepSource = false)(baseUri)
+        .moveFile(bucket, Uri.Path("my/file.txt"), Uri.Path("other/file.txt"))(baseUri)
         .rejectedWith[MoveFileRejection.FileNotFound]
 
     }

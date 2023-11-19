@@ -25,7 +25,7 @@ import ch.epfl.bluebrain.nexus.delta.sdk.acls.AclSimpleCheck
 import ch.epfl.bluebrain.nexus.delta.sdk.acls.model.AclAddress
 import ch.epfl.bluebrain.nexus.delta.sdk.auth.{AuthTokenProvider, Credentials}
 import ch.epfl.bluebrain.nexus.delta.sdk.directives.DeltaSchemeDirectives
-import ch.epfl.bluebrain.nexus.delta.sdk.http.HttpClient
+import ch.epfl.bluebrain.nexus.delta.sdk.http.{HttpClient, HttpClientConfig}
 import ch.epfl.bluebrain.nexus.delta.sdk.identities.model.{Caller, ServiceAccount}
 import ch.epfl.bluebrain.nexus.delta.sdk.identities.{Identities, IdentitiesDummy}
 import ch.epfl.bluebrain.nexus.delta.sdk.implicits._
@@ -43,10 +43,7 @@ import ch.epfl.bluebrain.nexus.testkit.ce.IOFromMap
 import ch.epfl.bluebrain.nexus.testkit.errors.files.FileErrors.{fileAlreadyExistsError, fileIsNotDeprecatedError}
 import ch.epfl.bluebrain.nexus.testkit.scalatest.ce.CatsIOValues
 import io.circe.Json
-import io.circe.syntax.KeyOps
 import org.scalatest._
-
-import java.util.UUID
 
 class FilesRoutesSpec
     extends BaseRouteSpec
@@ -58,7 +55,8 @@ class FilesRoutesSpec
 
   import akka.actor.typed.scaladsl.adapter._
   implicit val typedSystem: typed.ActorSystem[Nothing] = system.toTyped
-  val httpClient: HttpClient                           = HttpClient()(httpClientConfig, system, timer, contextShift)
+  implicit val hcc: HttpClientConfig                   = httpClientConfig
+  val httpClient: HttpClient                           = HttpClient()
   val authTokenProvider: AuthTokenProvider             = AuthTokenProvider.anonymousForTest
   val remoteDiskStorageClient                          = new RemoteDiskStorageClient(httpClient, authTokenProvider, Credentials.Anonymous)
 
@@ -90,7 +88,7 @@ class FilesRoutesSpec
   private val asWriter   = addCredentials(OAuth2BearerToken("writer"))
   private val asS3Writer = addCredentials(OAuth2BearerToken("s3writer"))
 
-  private val fetchContext = FetchContextDummy(Map(project.ref -> project.context, project2.ref -> project2.context))
+  private val fetchContext = FetchContextDummy(Map(project.ref -> project.context))
 
   private val s3Read    = Permission.unsafe("s3/read")
   private val s3Write   = Permission.unsafe("s3/write")
@@ -116,7 +114,7 @@ class FilesRoutesSpec
 
   private val aclCheck = AclSimpleCheck().accepted
 
-  lazy val storages: Storages = Storages(
+  lazy val storages: Storages                              = Storages(
     fetchContext.mapRejection(StorageRejection.ProjectContextRejection),
     ResolverContextResolution(rcr),
     IO.pure(allowedPerms.toSet),
@@ -125,7 +123,7 @@ class FilesRoutesSpec
     StoragesConfig(eventLogConfig, pagination, stCfg),
     ServiceAccount(User("nexus-sa", Label.unsafe("sa")))
   ).accepted
-  lazy val files: Files       =
+  lazy val files: Files                                    =
     Files(
       fetchContext.mapRejection(FileRejection.ProjectContextRejection),
       aclCheck,
@@ -136,12 +134,8 @@ class FilesRoutesSpec
       FilesConfig(eventLogConfig, MediaTypeDetectorConfig.Empty),
       remoteDiskStorageClient
     )(clock, uuidF, timer, contextShift, typedSystem)
-  private val groupDirectives =
-    DeltaSchemeDirectives(
-      fetchContext,
-      ioFromMap(uuid -> projectRef.organization, uuidOrg2 -> projectRefOrg2.organization),
-      ioFromMap(uuid -> projectRef, uuidOrg2              -> projectRefOrg2)
-    )
+  private val groupDirectives                              =
+    DeltaSchemeDirectives(fetchContext, ioFromMap(uuid -> projectRef.organization), ioFromMap(uuid -> projectRef))
 
   private lazy val routes                                  = routesWithIdentities(identities)
   private def routesWithIdentities(identities: Identities) =
@@ -168,12 +162,6 @@ class FilesRoutesSpec
     storages.create(s3Id, projectRef, diskFieldsJson deepMerge defaults deepMerge s3Perms)(callerWriter).accepted
     storages
       .create(dId, projectRef, diskFieldsJson deepMerge defaults deepMerge json"""{"capacity":5000}""")(callerWriter)
-      .void
-      .accepted
-    storages
-      .create(dId, projectRefOrg2, diskFieldsJson deepMerge defaults deepMerge json"""{"capacity":5000}""")(
-        callerWriter
-      )
       .void
       .accepted
   }
@@ -358,60 +346,6 @@ class FilesRoutesSpec
       givenAFile { id =>
         Delete(s"/v1/files/org/proj/$id?rev=1") ~> routes ~> check {
           response.shouldBeForbidden
-        }
-      }
-    }
-
-    "copy a file" in {
-      givenAFileInProject(projectRef.toString) { oldFileId =>
-        val newFileId = genString()
-        val json      = Json.obj("sourceProjectRef" := projectRef, "sourceFileId" := oldFileId)
-
-        Put(s"/v1/files/${projectRefOrg2.toString}/$newFileId", json.toEntity) ~> asWriter ~> routes ~> check {
-          status shouldEqual StatusCodes.Created
-          val expectedId = project2.base.iri / newFileId
-          val attr       = attributes(filename = oldFileId)
-          response.asJson shouldEqual fileMetadata(projectRefOrg2, expectedId, attr, diskIdRev)
-        }
-      }
-    }
-
-    "copy a file with generated new Id" in {
-      val fileCopyUUId = UUID.randomUUID()
-      withUUIDF(fileCopyUUId) {
-        givenAFileInProject(projectRef.toString) { oldFileId =>
-          val json = Json.obj("sourceProjectRef" := projectRef, "sourceFileId" := oldFileId)
-
-          Post(s"/v1/files/${projectRefOrg2.toString}/", json.toEntity) ~> asWriter ~> routes ~> check {
-            status shouldEqual StatusCodes.Created
-            val expectedId = project2.base.iri / fileCopyUUId.toString
-            val attr       = attributes(filename = oldFileId, id = fileCopyUUId)
-            response.asJson shouldEqual fileMetadata(projectRefOrg2, expectedId, attr, diskIdRev)
-          }
-        }
-      }
-    }
-
-    "reject file copy request if tag and rev are present simultaneously" in {
-      givenAFileInProject(projectRef.toString) { oldFileId =>
-        val json = Json.obj(
-          "sourceProjectRef" := projectRef,
-          "sourceFileId"     := oldFileId,
-          "sourceTag"        := "mytag",
-          "sourceRev"        := 3
-        )
-
-        val requests = List(
-          Put(s"/v1/files/${projectRefOrg2.toString}/${genString()}", json.toEntity),
-          Post(s"/v1/files/${projectRefOrg2.toString}/", json.toEntity)
-        )
-
-        forAll(requests) { req =>
-          req ~> asWriter ~> routes ~> check {
-            status shouldEqual StatusCodes.BadRequest
-            response.asJson shouldEqual
-              jsonContentOf("/errors/tag-and-rev-copy-error.json", "fileId" -> oldFileId)
-          }
         }
       }
     }
@@ -696,11 +630,9 @@ class FilesRoutesSpec
     }
   }
 
-  def givenAFile(test: String => Assertion): Assertion = givenAFileInProject("org/proj")(test)
-
-  def givenAFileInProject(projRef: String)(test: String => Assertion): Assertion = {
+  def givenAFile(test: String => Assertion): Assertion = {
     val id = genString()
-    Put(s"/v1/files/$projRef/$id", entity(s"$id")) ~> asWriter ~> routes ~> check {
+    Put(s"/v1/files/org/proj/$id", entity(s"$id")) ~> asWriter ~> routes ~> check {
       status shouldEqual StatusCodes.Created
     }
     test(id)

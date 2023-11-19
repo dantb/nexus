@@ -2,12 +2,10 @@ package ch.epfl.bluebrain.nexus.delta.plugins.storage.storages.operations.disk
 
 import akka.actor.ActorSystem
 import akka.http.scaladsl.model.{BodyPartEntity, Uri}
-import akka.stream.{IOOperationIncompleteException, IOResult}
+import akka.stream.IOOperationIncompleteException
 import akka.stream.scaladsl.FileIO
-import akka.util.ByteString
 import cats.effect.{ContextShift, IO}
 import cats.implicits.catsSyntaxMonadError
-import ch.epfl.bluebrain.nexus.delta.plugins.storage.files.model.Digest.ComputedDigest
 import ch.epfl.bluebrain.nexus.delta.plugins.storage.files.model.FileAttributes.FileAttributesOrigin.Client
 import ch.epfl.bluebrain.nexus.delta.plugins.storage.files.model.{FileAttributes, FileDescription}
 import ch.epfl.bluebrain.nexus.delta.plugins.storage.storages.model.Storage.DiskStorage
@@ -37,10 +35,7 @@ final class DiskStorageSaveFile(storage: DiskStorage)(implicit as: ActorSystem, 
         IO.fromFuture(
           IO.delay(
             entity.dataBytes.runWith(
-              SinkUtils.combineMat[ByteString, ComputedDigest, IOResult, FileAttributes](
-                digestSink(storage.value.algorithm),
-                FileIO.toPath(fullPath, openOpts)
-              ) {
+              SinkUtils.combineMat(digestSink(storage.value.algorithm), FileIO.toPath(fullPath, openOpts)) {
                 case (digest, ioResult) if fullPath.toFile.exists() =>
                   Future.successful(
                     FileAttributes(
