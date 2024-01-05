@@ -4,9 +4,11 @@ import cats.effect.IO
 import cats.{Applicative, Eval, Traverse}
 import ch.epfl.bluebrain.nexus.delta.rdf.IriOrBNode.Iri
 import ch.epfl.bluebrain.nexus.delta.rdf.jsonld.context.JsonLdContext.keywords
-import ch.epfl.bluebrain.nexus.delta.sourcing.model.{EntityType, ProjectRef}
+import ch.epfl.bluebrain.nexus.delta.sourcing.implicits.pgDecoderGetT
+import ch.epfl.bluebrain.nexus.delta.sourcing.model.{EntityType, Envelope, ProjectRef}
 import ch.epfl.bluebrain.nexus.delta.sourcing.offset.Offset
 import ch.epfl.bluebrain.nexus.delta.sourcing.stream.Elem.{DroppedElem, FailedElem, SuccessElem}
+import doobie.{Get, Read}
 import io.circe.{Decoder, Encoder}
 import io.circe.generic.extras.Configuration
 import io.circe.generic.extras.semiauto.{deriveConfiguredDecoder, deriveConfiguredEncoder}
@@ -232,6 +234,18 @@ object Elem {
       value: A,
       rev: Int
   ) extends Elem[A]
+
+  object SuccessElem {
+    @nowarn("cat=unused")
+    implicit def envelopeRead[Value](implicit s: Decoder[Value]): Read[SuccessElem[Value]] = {
+      import doobie.postgres.implicits._
+      import ch.epfl.bluebrain.nexus.delta.sourcing.implicits._
+      implicit val v: Get[Value] = pgDecoderGetT[Value]
+      Read[(EntityType, Iri, Value, Int, Instant, Long)].map { case (tpe, id, value, rev, instant, offset) =>
+        SuccessElem(tpe, id, None, instant, Offset.at(offset), value, rev)
+      }
+    }
+  }
 
   /**
     * An element that has suffered a processing failure.

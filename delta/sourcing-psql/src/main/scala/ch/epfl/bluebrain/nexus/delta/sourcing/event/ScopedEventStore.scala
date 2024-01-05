@@ -8,6 +8,7 @@ import ch.epfl.bluebrain.nexus.delta.sourcing.implicits._
 import ch.epfl.bluebrain.nexus.delta.sourcing.model.{EntityType, Envelope, EnvelopeStream, ProjectRef}
 import ch.epfl.bluebrain.nexus.delta.sourcing.offset.Offset
 import ch.epfl.bluebrain.nexus.delta.sourcing.query.{RefreshStrategy, StreamingQuery}
+import ch.epfl.bluebrain.nexus.delta.sourcing.stream.Elem
 import ch.epfl.bluebrain.nexus.delta.sourcing.{Execute, PartitionInit, Scope, Serializer, Transactors}
 import doobie._
 import doobie.implicits._
@@ -133,12 +134,12 @@ object ScopedEventStore {
           offset: Offset,
           strategy: RefreshStrategy
       ): EnvelopeStream[E] =
-        StreamingQuery[Envelope[E]](
+        StreamingQuery[Elem.SuccessElem[E]](
           offset,
           offset => sql"""SELECT type, id, value, rev, instant, ordering FROM public.scoped_events
                          |${Fragments.whereAndOpt(Some(fr"type = $tpe"), scope.asFragment, offset.asFragment)}
                          |ORDER BY ordering
-                         |LIMIT ${config.batchSize}""".stripMargin.query[Envelope[E]],
+                         |LIMIT ${config.batchSize}""".stripMargin.query[Elem.SuccessElem[E]],
           _.offset,
           config.copy(refreshStrategy = strategy),
           xas
