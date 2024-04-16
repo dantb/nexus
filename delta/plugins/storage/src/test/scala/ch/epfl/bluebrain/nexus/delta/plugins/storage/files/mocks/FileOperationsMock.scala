@@ -5,7 +5,7 @@ import akka.http.scaladsl.model.{BodyPartEntity, Uri}
 import cats.effect.IO
 import ch.epfl.bluebrain.nexus.delta.kernel.utils.UUIDF
 import ch.epfl.bluebrain.nexus.delta.plugins.storage.files.model.{ComputedFileAttributes, FileAttributes, FileStorageMetadata}
-import ch.epfl.bluebrain.nexus.delta.plugins.storage.storages.model.{AbsolutePath, Storage}
+import ch.epfl.bluebrain.nexus.delta.plugins.storage.storages.model.{AbsolutePath, Storage, StorageValue}
 import ch.epfl.bluebrain.nexus.delta.plugins.storage.storages.operations.FileOperations
 import ch.epfl.bluebrain.nexus.delta.plugins.storage.storages.operations.disk.DiskFileOperations
 import ch.epfl.bluebrain.nexus.delta.plugins.storage.storages.operations.remote.RemoteDiskFileOperations
@@ -16,6 +16,7 @@ import ch.epfl.bluebrain.nexus.delta.sdk.AkkaSource
 object FileOperationsMock {
 
   def unimplemented: FileOperations = new FileOperations {
+    override def validateStorageAccess(storage: StorageValue): IO[Unit]                                    = ???
     override def save(storage: Storage, filename: String, entity: BodyPartEntity): IO[FileStorageMetadata] = ???
     override def link(storage: Storage, sourcePath: Uri.Path, filename: String): IO[FileStorageMetadata]   = ???
     override def fetch(storage: Storage, attributes: FileAttributes): IO[AkkaSource]                       = ???

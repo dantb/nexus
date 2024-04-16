@@ -2,7 +2,6 @@ package ch.epfl.bluebrain.nexus.delta.plugins.storage.files.batch
 
 import cats.data.NonEmptyList
 import cats.effect.IO
-import ch.epfl.bluebrain.nexus.delta.kernel.utils.UUIDF
 import ch.epfl.bluebrain.nexus.delta.plugins.storage.files.batch.BatchCopySuite._
 import ch.epfl.bluebrain.nexus.delta.plugins.storage.files.generators.FileGen
 import ch.epfl.bluebrain.nexus.delta.plugins.storage.files.mocks._
@@ -28,13 +27,15 @@ import ch.epfl.bluebrain.nexus.delta.sourcing.model.{ProjectRef, ResourceRef}
 import ch.epfl.bluebrain.nexus.testkit.Generators
 import ch.epfl.bluebrain.nexus.testkit.mu.NexusSuite
 
-import java.util.UUID
 import scala.collection.mutable.ListBuffer
 
-class BatchCopySuite extends NexusSuite with StorageFixtures with Generators with FileFixtures with FileGen {
-
-  private val sourceFileDescUuid         = UUID.randomUUID()
-  implicit private val fixedUUidF: UUIDF = UUIDF.fixed(sourceFileDescUuid)
+class BatchCopySuite
+    extends NexusSuite
+    with StorageFixtures
+    with Generators
+    with FileFixtures
+    with FileGen
+    with UUIDFFixtures.Random {
 
   private val sourceProj       = genProject()
   private val sourceFileId     = genFileId(sourceProj.ref)
@@ -208,7 +209,7 @@ class BatchCopySuite extends NexusSuite with StorageFixtures with Generators wit
       stats: StoragesStatistics = StoragesStatisticsMock.unimplemented,
       diskCopy: DiskStorageCopyFiles = DiskCopyMock.unimplemented,
       remoteCopy: RemoteDiskStorageCopyFiles = RemoteCopyMock.unimplemented
-  ): BatchCopy = BatchCopy.mk(fetchFile, fetchStorage, aclCheck, stats, diskCopy, remoteCopy)
+  ): BatchCopy = BatchCopy.mk(fetchFile, fetchStorage, aclCheck, stats, diskCopy, remoteCopy)(fixedRandomUuidF)
 
   private def userAuthorizedOnProjectStorage(storage: Storage): (User, AclCheck) = {
     val user        = genUser()
@@ -253,7 +254,7 @@ class BatchCopySuite extends NexusSuite with StorageFixtures with Generators wit
   ) = {
     val expectedCopyDetails =
       RemoteDiskCopyDetails(
-        sourceFileDescUuid,
+        uuid,
         storage,
         sourceAttr.path,
         storage.value.folder,
