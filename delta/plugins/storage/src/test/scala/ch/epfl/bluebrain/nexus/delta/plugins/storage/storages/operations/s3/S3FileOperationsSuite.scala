@@ -23,6 +23,7 @@ import io.circe.Json
 import io.laserdisc.pure.s3.tagless.S3AsyncClientOp
 import munit.AnyFixture
 import org.apache.commons.codec.binary.Hex
+import software.amazon.awssdk.services.s3.model.{BucketCannedACL, PutBucketAclRequest}
 
 import java.nio.charset.StandardCharsets
 import java.security.MessageDigest
@@ -151,4 +152,32 @@ class S3FileOperationsSuite
       } yield ()
     }
   }
+
+  test("TODO see how perms work in localstack S3") {
+    givenAnS3Bucket { bucket =>
+      val storageValue = S3StorageValue(
+        default = false,
+        algorithm = DigestAlgorithm.default,
+        bucket = bucket,
+        readPermission = read,
+        writePermission = write,
+        maxFileSize = 20
+      )
+
+      val iri = iri"http://localhost/s3"
+      val project = ProjectRef.unsafe("org", "project")
+      val storage = S3Storage(iri, project, storageValue, Json.obj())
+
+      val filename = "myfile.txt"
+      val content = genString()
+      val entity = HttpEntity(content)
+
+      underlying.putBucketAcl(PutBucketAclRequest.builder().bucket(bucket).acl(BucketCannedACL.PUBLIC_READ).build()) >>
+        fileOps.save(storage, filename, entity).flatMap { x =>
+          IO.println(s"Saved file with $x")
+
+        }
+    }
+  }
+
 }
